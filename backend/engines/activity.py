@@ -62,10 +62,10 @@ def update_activity_statuses():
             ubid.activity_pulse_score = total_lp
             
             # Status thresholds (Lowered for better demo differentiation)
-            if total_lp >= 60:
+            if total_lp >= 30:
                 ubid.status = UBIDStatus.ACTIVE
                 evidence_trail["verdict_justification"] = f"Recent activity detected ({total_lp} LP). Business is currently operating."
-            elif total_lp >= 15:
+            elif total_lp >= 5:
                 ubid.status = UBIDStatus.DORMANT
                 evidence_trail["verdict_justification"] = f"Minor activity ({total_lp} LP). Signs of life detected but inconsistent."
             else:

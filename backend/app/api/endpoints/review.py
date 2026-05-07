@@ -46,7 +46,7 @@ def process_review_decision(review_id: UUID4, decision_data: ReviewDecision, db:
         elif r2.ubid_id:
             r1.ubid_id = r2.ubid_id
         else:
-            new_ubid = UBID(canonical_name=r1.name)
+            new_ubid = UBID(canonical_name=r1.extracted_name)
             db.add(new_ubid)
             db.flush()
             r1.ubid_id = new_ubid.id
@@ -57,12 +57,12 @@ def process_review_decision(review_id: UUID4, decision_data: ReviewDecision, db:
     elif decision_data.decision == "REJECT":
         # Keep them separate, assign new UBIDs if they don't have one
         if not r1.ubid_id:
-            u1 = UBID(canonical_name=r1.name)
+            u1 = UBID(canonical_name=r1.extracted_name)
             db.add(u1)
             db.flush()
             r1.ubid_id = u1.id
         if not r2.ubid_id:
-            u2 = UBID(canonical_name=r2.name)
+            u2 = UBID(canonical_name=r2.extracted_name)
             db.add(u2)
             db.flush()
             r2.ubid_id = u2.id

@@ -8,7 +8,8 @@ from engines.security import hash_pii, phonetic_encode
 import pandas as pd
 import os
 
-KAGGLE_PATH = r"C:\Users\arund\.cache\kagglehub\datasets\rowhitswami\all-indian-companies-registration-data-1900-2019\versions\2\registered_companies.csv"
+# Use a relative path for deployment
+DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "companies_subset.csv")
 
 # We need to recreate tables first since we changed schema
 Base.metadata.create_all(bind=engine)
@@ -105,14 +106,16 @@ def generate_mock_data():
         db.execute(UBID.__table__.delete())
         db.commit()
 
-    if not os.path.exists(KAGGLE_PATH):
-        return {"status": "error", "message": "Kaggle dataset not found. Please run the download script."}
+    if not os.path.exists(DATA_PATH):
+        return {"status": "error", "message": "Portable dataset not found in data/ folder."}
 
     # 2. Load Karnataka Sample
     # We load 2000 records as base "Truth" to generate variations from
     try:
-        df_full = pd.read_csv(KAGGLE_PATH, low_memory=False)
-        df_kar = df_full[df_full['REGISTERED_STATE'] == 'Karnataka'].sample(n=1000, random_state=42)
+        df_kar = pd.read_csv(DATA_PATH, low_memory=False)
+        # We take a sample of 1000 for the actual generation process
+        if len(df_kar) > 1000:
+            df_kar = df_kar.sample(n=1000, random_state=42)
     except Exception as e:
         return {"status": "error", "message": f"Failed to read dataset: {str(e)}"}
 
@@ -148,11 +151,13 @@ def generate_mock_data():
             has_pan = random.random() > 0.4
             pan = f"ABCDE{random.randint(1000, 9999)}F" if has_pan else None
             
-            # Map ROC schema to our Bronze schema
+            # Map ROC schema to our Bronze schema with safe NaN handling
+            safe_raw_data = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
+            
             r = SourceRecord(
                 department=random.choice(["Commercial Taxes", "Labour", "Factories", "BESCOM", "KSPCB"]),
                 source_id=f"ROC-{cin[:6]}",
-                raw_data=row.to_dict(), # Store full ROC JSONB
+                raw_data=safe_raw_data, # Store full ROC JSONB safely
                 extracted_name=name_variant,
                 extracted_address=address[:100],
                 extracted_pincode=address[-6:] if address[-6:].isdigit() else "560001",
@@ -164,37 +169,56 @@ def generate_mock_data():
             
             # 4. Generate Events based on ROC status
             roc_status = str(row['COMPANY_STATUS'])
-            mapped_status = STATUS_MAP.get(roc_status, "ACTIVE")
+            # Force at least 75% to be ACTIVE for a better demo experience
+            if random.random() < 0.75:
+                mapped_status = "ACTIVE"
+            else:
+                mapped_status = STATUS_MAP.get(roc_status, "ACTIVE")
             
+            event_pool = [
+                ("GST Return", "Monthly GSTR-3B filing confirmed."),
+                ("Tax Payment", "Advance tax installment processed."),
+                ("Annual Filing", "MCA Form MGT-7 submitted."),
+                ("Labour Compliance", "Employee registry update verified."),
+                ("Utility Payment", "BESCOM/BWSSB bill cleared."),
+                ("Trade License", "BBMP Trade License renewal."),
+                ("Inspection", "On-site safety audit completed."),
+                ("PF Deposit", "EPFO monthly contribution confirmed.")
+            ]
+
             if mapped_status == "ACTIVE":
                 # High-frequency activity signals
-                num_events = random.randint(5, 15)
+                num_events = random.randint(8, 20)
                 for _ in range(num_events):
-                    e_type = random.choice(["Annual Filing", "GST Return", "Labour Compliance", "Tax Payment"])
+                    e_type, e_desc = random.choice(event_pool)
                     db.add(Event(
                         source_record_id=r.id,
                         event_type=e_type,
-                        event_date=random_date(120), # Very recent
-                        life_points=random.randint(40, 100) # High impact
+                        description=e_desc,
+                        event_date=random_date(180), # Last 6 months
+                        life_points=random.randint(15, 45) 
                     ))
             elif mapped_status == "DORMANT":
                 # Low-frequency, older signals
-                num_events = random.randint(2, 4)
+                num_events = random.randint(2, 5)
                 for _ in range(num_events):
+                    e_type, e_desc = random.choice(event_pool)
                     db.add(Event(
                         source_record_id=r.id,
-                        event_type="Utility Payment",
-                        event_date=random_date(500, 200),
-                        life_points=random.randint(5, 15) # Low impact
+                        event_type=e_type,
+                        description=f"Occasional {e_desc.lower()}",
+                        event_date=random_date(600, 200),
+                        life_points=random.randint(5, 12)
                     ))
             else: # CLOSED
                 # Residual old signals only
-                if random.random() > 0.8:
+                if random.random() > 0.7:
                     db.add(Event(
                         source_record_id=r.id,
-                        event_type="Old Inspection",
-                        event_date=random_date(1500, 1000),
-                        life_points=50
+                        event_type="Terminal Filing",
+                        description="Business closure notification filed.",
+                        event_date=random_date(1500, 800),
+                        life_points=5
                     ))
 
     db.commit()

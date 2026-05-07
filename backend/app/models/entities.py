@@ -88,10 +88,8 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    action = Column(String) # "MANUAL_MERGE", "MANUAL_REJECT", "UNMERGE"
-    user_id = Column(String) # Mocked to "Review_Auditor" for now
+    review_queue_id = Column(UUID(as_uuid=True), nullable=True)
+    reviewer_id = Column(String)
+    decision = Column(String) # "APPROVE_MERGE", "REJECT"
     justification = Column(String)
-    target_record_1_id = Column(UUID(as_uuid=True), nullable=True)
-    target_record_2_id = Column(UUID(as_uuid=True), nullable=True)
-    target_ubid_id = Column(UUID(as_uuid=True), nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
